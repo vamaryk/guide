@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #fafafa;
+  background:
+    radial-gradient(circle at top left, rgba(1, 165, 166, 0.28), transparent 28%),
+    radial-gradient(circle at 85% 20%, rgba(255, 238, 94, 0.18), transparent 20%),
+    radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.22), transparent 30%),
+    #0a102a;
+  font-family: "Roboto", sans-serif;
+  scroll-behavior: smooth;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(1, 165, 166, 0.28), transparent 28%),
+    radial-gradient(circle at 85% 20%, rgba(255, 238, 94, 0.18), transparent 20%),
+    radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.22), transparent 30%),
+    #0a102a;
+  color: #fafafa;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.glass-panel {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(187, 222, 241, 0.18);
+  box-shadow: 0 24px 80px rgba(3, 9, 31, 0.38);
+}
+
+.section-shell {
+  @apply glass-panel rounded-[28px] px-4 py-6 md:px-8 md:py-9;
+}
+
+.eyebrow {
+  @apply mb-4 inline-flex max-w-full items-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-center text-xs font-medium uppercase tracking-[0.24em] text-mist;
+}
+
+.chip {
+  @apply max-w-full rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-mist;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3,
+p {
+  overflow-wrap: anywhere;
+}
+
+.yandex-map-host {
+  overflow: hidden;
+}
+
+.yandex-marker {
+  min-width: 0;
+  max-width: 140px;
+  border: 1px solid rgba(187, 222, 241, 0.18);
+  border-radius: 18px;
+  background: rgba(10, 16, 42, 0.92);
+  color: #fafafa;
+  padding: 8px 10px;
+  text-align: left;
+  box-shadow: 0 24px 80px rgba(3, 9, 31, 0.38);
+  backdrop-filter: blur(16px);
+}
+
+.yandex-marker__city {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.yandex-marker__count {
+  display: block;
+  margin-top: 2px;
+  color: #bbdef1;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+/* Gallery Swiper Styles */
+.swiper-gallery-wrapper {
+  padding: 0 60px;
+}
+
+.swiper-gallery {
+  padding: 20px 0 60px;
+  overflow: visible;
+}
+
+.swiper-gallery .swiper-slide {
+  height: auto;
+}
+
+/* Custom Navigation Buttons */
+.swiper-gallery-prev,
+.swiper-gallery-next {
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease;
+  pointer-events: none;
+}
+
+.swiper-gallery-wrapper:hover .swiper-gallery-prev,
+.swiper-gallery-wrapper:hover .swiper-gallery-next {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.swiper-gallery-prev:hover,
+.swiper-gallery-next:hover {
+  transform: scale(1.1);
+}
+
+/* Custom Pagination */
+.swiper-gallery-pagination {
+  display: flex;
+}
+
+.swiper-gallery-pagination .swiper-pagination-bullet {
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 2px solid transparent;
+  opacity: 1;
+  transition: all 0.3s ease;
+  margin: 0 !important;
+}
+
+.swiper-gallery-pagination .swiper-pagination-bullet:hover {
+  background: rgba(255, 255, 255, 0.7);
+  transform: scale(1.1);
+}
+
+.swiper-gallery-pagination .swiper-pagination-bullet-active {
+  background: #fef08a;
+  border-color: #fef08a;
+  /* width: 28px; */
+  border-radius: 9999px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .swiper-gallery-wrapper {
+    padding: 0 45px;
+  }
+  
+  .swiper-gallery-prev,
+  .swiper-gallery-next {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .swiper-gallery-prev svg,
+  .swiper-gallery-next svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+@media (min-width: 640px) and (max-width: 768px) {
+  .swiper-gallery-wrapper {
+    padding: 0 50px;
+  }
+}

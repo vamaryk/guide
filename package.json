@@ -1,0 +1,46 @@
+{
+  "name": "promtourism-saratov-guide",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server:dev": "tsx server/index.ts",
+    "admin:hash-password": "tsx server/hash-password.ts",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run src/App.test.tsx src/admin/AdminPage.test.tsx server/index.test.ts",
+    "test:watch": "vitest src/App.test.tsx src/admin/AdminPage.test.tsx server/index.test.ts",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "lucide-react": "^0.542.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "swiper": "^12.1.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.8.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.47",
+    "supertest": "^7.0.0",
+    "tailwindcss": "^3.4.13",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.3"
+  }
+}
