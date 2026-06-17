@@ -5,7 +5,11 @@ import { fileURLToPath } from 'node:url';
 import type { BookingRecord, BookingStatus, ObjectRecord } from './types';
 
 const require = createRequire(import.meta.url);
-const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
+
+// ✅ Исправлено: правильный тип для DatabaseSync
+type DatabaseSyncCtor = new (filename: string) => import('node:sqlite').DatabaseSync;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: DatabaseSyncCtor };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,17 +26,19 @@ type ObjectRow = Omit<ObjectRecord, 'tags' | 'coordinates' | 'includes' | 'highl
   highlights: string;
   imageUrl: string;
 };
-
 type BookingRow = Omit<BookingRecord, 'consent'> & {
   consent: number;
 };
 
-let db: DatabaseSync | null = null;
+let db: import('node:sqlite').DatabaseSync | null = null;
 
 function parseJsonFile<T>(filePath: string, fallback: T): T {
   if (!existsSync(filePath)) return fallback;
-  try { return JSON.parse(readFileSync(filePath, 'utf8')) as T; }
-  catch { return fallback; }
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf8')) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 function encodeObject(item: ObjectRecord): ObjectRow {
@@ -101,39 +107,33 @@ function decodeBooking(row: BookingRow): BookingRecord {
   };
 }
 
-function migrateJsonData(database: DatabaseSync) {
-  const objectCount = Number(database.prepare('SELECT COUNT(*) as count FROM objects').get().count ?? 0);
-  const bookingCount = Number(database.prepare('SELECT COUNT(*) as count FROM bookings').get().count ?? 0);
+function migrateJsonData(database: import('node:sqlite').DatabaseSync) {
+  const objectCount = Number(
+    (database.prepare('SELECT COUNT() as count FROM objects').get() as { count: number }).count ?? 0,
+  );
+  const bookingCount = Number(
+    (database.prepare('SELECT COUNT() as count FROM bookings').get() as { count: number }).count ?? 0,
+  );
 
   if (objectCount === 0) {
     const items = parseJsonFile<ObjectRecord[]>(objectsJsonPath, []);
-    const insertObject = database.prepare(`
-      INSERT INTO objects (
-        slug, name, city, industry, audience, price, duration, blurb,
-        tags, latitude, longitude, address, safety, format, schedule,
-        audienceDetails, includes, highlights, fullDescription, imageUrl
-      ) VALUES (
-        @slug, @name, @city, @industry, @audience, @price, @duration, @blurb,
-        @tags, @latitude, @longitude, @address, @safety, @format, @schedule,
-        @audienceDetails, @includes, @highlights, @fullDescription, @imageUrl
-      )
-    `);
-
+    const insertObject = database.prepare(`INSERT INTO objects (
+      slug, name, city, industry, audience, price, duration, blurb, tags, latitude, longitude,
+      address, safety, format, schedule, audienceDetails, includes, highlights, fullDescription, imageUrl
+    ) VALUES (
+      @slug, @name, @city, @industry, @audience, @price, @duration, @blurb, @tags, @latitude, @longitude,
+      @address, @safety, @format, @schedule, @audienceDetails, @includes, @highlights, @fullDescription, @imageUrl
+    )`);
     for (const item of items) insertObject.run(encodeObject(item));
   }
 
   if (bookingCount === 0) {
     const items = parseJsonFile<Partial<BookingRecord>[]>(bookingsJsonPath, []);
-    const insertBooking = database.prepare(`
-      INSERT INTO bookings (
-        id, name, contact, format, date, objectSlug, consent, status,
-        managerComment, lastContactAt, updatedAt, createdAt
-      ) VALUES (
-        @id, @name, @contact, @format, @date, @objectSlug, @consent, @status,
-        @managerComment, @lastContactAt, @updatedAt, @createdAt
-      )
-    `);
-
+    const insertBooking = database.prepare(`INSERT INTO bookings (
+      id, name, contact, format, date, objectSlug, consent, status, managerComment, lastContactAt, updatedAt, createdAt
+    ) VALUES (
+      @id, @name, @contact, @format, @date, @objectSlug, @consent, @status, @managerComment, @lastContactAt, @updatedAt, @createdAt
+    )`);
     for (const item of items) {
       const createdAt = item.createdAt ?? new Date().toISOString();
       insertBooking.run({
@@ -156,10 +156,8 @@ function migrateJsonData(database: DatabaseSync) {
 
 export function getDb() {
   if (db) return db;
-
   mkdirSync(dataDir, { recursive: true });
   db = new DatabaseSync(dbPath);
-
   db.exec(`
     PRAGMA journal_mode = WAL;
 
@@ -207,9 +205,12 @@ export function getDb() {
     );
   `);
 
-  // 👇 Автоматическая миграция для существующей БД (безопасно, если колонка уже есть)
-  try { db.prepare('ALTER TABLE objects ADD COLUMN imageUrl TEXT NOT NULL DEFAULT ""').run(); }
-  catch { /* колонка уже существует */ }
+  // Автоматическая миграция для существующей БД
+  try {
+    db.prepare('ALTER TABLE objects ADD COLUMN imageUrl TEXT NOT NULL DEFAULT ""').run();
+  } catch {
+    /* колонка уже существует */
+  }
 
   migrateJsonData(db);
   return db;
@@ -229,46 +230,29 @@ export function getObjectBySlug(slug: string) {
 
 export function createObject(item: ObjectRecord) {
   const database = getDb();
-  database.prepare(`
-    INSERT INTO objects (
-      slug, name, city, industry, audience, price, duration, blurb,
-      tags, latitude, longitude, address, safety, format, schedule,
-      audienceDetails, includes, highlights, fullDescription, imageUrl
+  database
+    .prepare(`INSERT INTO objects (
+      slug, name, city, industry, audience, price, duration, blurb, tags, latitude, longitude,
+      address, safety, format, schedule, audienceDetails, includes, highlights, fullDescription, imageUrl
     ) VALUES (
-      @slug, @name, @city, @industry, @audience, @price, @duration, @blurb,
-      @tags, @latitude, @longitude, @address, @safety, @format, @schedule,
-      @audienceDetails, @includes, @highlights, @fullDescription, @imageUrl
-    )
-  `).run(encodeObject(item));
+      @slug, @name, @city, @industry, @audience, @price, @duration, @blurb, @tags, @latitude, @longitude,
+      @address, @safety, @format, @schedule, @audienceDetails, @includes, @highlights, @fullDescription, @imageUrl
+    )`)
+    .run(encodeObject(item));
   return item;
 }
 
 export function updateObject(previousSlug: string, item: ObjectRecord) {
   const database = getDb();
-  database.prepare(`
-    UPDATE objects
-    SET slug = @slug,
-        name = @name,
-        city = @city,
-        industry = @industry,
-        audience = @audience,
-        price = @price,
-        duration = @duration,
-        blurb = @blurb,
-        tags = @tags,
-        latitude = @latitude,
-        longitude = @longitude,
-        address = @address,
-        safety = @safety,
-        format = @format,
-        schedule = @schedule,
-        audienceDetails = @audienceDetails,
-        includes = @includes,
-        highlights = @highlights,
-        fullDescription = @fullDescription,
-        imageUrl = @imageUrl
-    WHERE slug = @previousSlug
-  `).run({ ...encodeObject(item), previousSlug });
+  database
+    .prepare(`UPDATE objects SET
+      slug = @slug, name = @name, city = @city, industry = @industry, audience = @audience,
+      price = @price, duration = @duration, blurb = @blurb, tags = @tags, latitude = @latitude,
+      longitude = @longitude, address = @address, safety = @safety, format = @format,
+      schedule = @schedule, audienceDetails = @audienceDetails, includes = @includes,
+      highlights = @highlights, fullDescription = @fullDescription, imageUrl = @imageUrl
+    WHERE slug = @previousSlug`)
+    .run({ ...encodeObject(item), previousSlug });
   return item;
 }
 
@@ -296,24 +280,21 @@ export function listBookings(filters: { search?: string; status?: BookingStatus 
   const rows = database
     .prepare(`SELECT * FROM bookings WHERE ${clauses.join(' AND ')} ORDER BY datetime(createdAt) DESC`)
     .all(...params) as BookingRow[];
-
   return rows.map(decodeBooking);
 }
 
 export function createBooking(item: BookingRecord) {
   const database = getDb();
-  database.prepare(`
-    INSERT INTO bookings (
-      id, name, contact, format, date, objectSlug, consent, status,
-      managerComment, lastContactAt, updatedAt, createdAt
+  database
+    .prepare(`INSERT INTO bookings (
+      id, name, contact, format, date, objectSlug, consent, status, managerComment, lastContactAt, updatedAt, createdAt
     ) VALUES (
-      @id, @name, @contact, @format, @date, @objectSlug, @consent, @status,
-      @managerComment, @lastContactAt, @updatedAt, @createdAt
-    )
-  `).run({
-    ...item,
-    consent: item.consent ? 1 : 0,
-  });
+      @id, @name, @contact, @format, @date, @objectSlug, @consent, @status, @managerComment, @lastContactAt, @updatedAt, @createdAt
+    )`)
+    .run({
+      ...item,
+      consent: item.consent ? 1 : 0,
+    });
   return item;
 }
 
@@ -323,24 +304,23 @@ export function getBookingById(id: string) {
   return row ? decodeBooking(row) : null;
 }
 
-export function updateBookingWorkflow(id: string, payload: { status: BookingStatus; managerComment: string; lastContactAt: string | null }) {
+export function updateBookingWorkflow(
+  id: string,
+  payload: { status: BookingStatus; managerComment: string; lastContactAt: string | null },
+) {
   const database = getDb();
   const updatedAt = new Date().toISOString();
-  database.prepare(`
-    UPDATE bookings
-    SET status = @status,
-        managerComment = @managerComment,
-        lastContactAt = @lastContactAt,
-        updatedAt = @updatedAt
-    WHERE id = @id
-  `).run({
-    id,
-    status: payload.status,
-    managerComment: payload.managerComment,
-    lastContactAt: payload.lastContactAt,
-    updatedAt,
-  });
-
+  database
+    .prepare(`UPDATE bookings SET
+      status = @status, managerComment = @managerComment, lastContactAt = @lastContactAt, updatedAt = @updatedAt
+    WHERE id = @id`)
+    .run({
+      id,
+      status: payload.status,
+      managerComment: payload.managerComment,
+      lastContactAt: payload.lastContactAt,
+      updatedAt,
+    });
   return getBookingById(id);
 }
 
@@ -362,11 +342,7 @@ export function deleteAdminSession(token: string) {
 
 export function resetDatabase() {
   const database = getDb();
-  database.exec(`
-    DELETE FROM admin_sessions;
-    DELETE FROM bookings;
-    DELETE FROM objects;
-  `);
+  database.exec(`DELETE FROM admin_sessions; DELETE FROM bookings; DELETE FROM objects;`);
   migrateJsonData(database);
 }
 
