@@ -24,12 +24,17 @@ export default {
             },
             keyframes: {
                 float: {
-                    '0%, 100%': { transform: 'translateY(0px)' },
-                    '50%': { transform: 'translateY(-10px)' }
+                    '0%, 100%': { transform: 'translateY(0px) rotate(3deg)' },
+                    '50%': { transform: 'translateY(-10px) rotate(3deg)' }
+                },
+                shimmer: {
+                    '0%': { transform: 'translateX(-100%)' },
+                    '100%': { transform: 'translateX(100%)' }
                 }
             },
             animation: {
-                float: 'float 7s ease-in-out infinite'
+                float: 'float 6s ease-in-out infinite',
+                shimmer: 'shimmer 2s linear infinite'
             }
         }
     },

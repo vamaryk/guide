@@ -1,174 +1,231 @@
-import { MapPinned } from 'lucide-react';
+import { MapPinned, Filter, X, ChevronDown, Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Excursion } from '../data';
 
 declare global {
   interface Window {
-    ymaps3?: YandexMapsApi;
+    ymaps?: any;
   }
 }
-
-type YandexMapsApi = {
-  ready: Promise<void>;
-  YMap: new (element: HTMLElement, props: unknown) => {
-    addChild: (child: unknown) => unknown;
-    destroy?: () => void;
-  };
-  YMapDefaultSchemeLayer: new () => unknown;
-  YMapDefaultFeaturesLayer: new () => unknown;
-  YMapMarker: new (props: unknown, element: HTMLElement) => unknown;
-};
 
 type Props = {
   objects: Excursion[];
   onOpenDetails: (slug: string) => void;
+  onSelect?: (slug: string | null) => void;
+  industryFilter: string | null;
+  cityFilter: string | null;
 };
 
-let scriptPromise: Promise<YandexMapsApi> | null = null;
+let scriptLoaded = false;
 
-function loadYandexMaps(apiKey: string) {
-  if (window.ymaps3) {
-    return Promise.resolve(window.ymaps3);
+function loadYandexMaps(): Promise<void> {
+  if (scriptLoaded && window.ymaps) {
+    return Promise.resolve();
   }
 
-  if (scriptPromise) {
-    return scriptPromise;
+  if (window.ymaps) {
+    return Promise.resolve();
   }
 
-  scriptPromise = new Promise((resolve, reject) => {
+  const scriptUrl = `https://api-maps.yandex.ru/2.1/?apikey=${import.meta.env.VITE_YANDEX_MAPS_API_KEY}&lang=ru_RU`;
+  return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://api-maps.yandex.ru/v3/?apikey=${apiKey}&lang=ru_RU`;
+    script.src = scriptUrl;
     script.async = true;
+    script.type = 'text/javascript';
+    
     script.onload = () => {
-      if (window.ymaps3) {
-        resolve(window.ymaps3);
+      if (window.ymaps) {
+        scriptLoaded = true;
+        resolve();
         return;
       }
-
-      reject(new Error('Yandex Maps API did not initialize.'));
+      reject(new Error('window.ymaps не найден'));
     };
-    script.onerror = () => reject(new Error('Failed to load Yandex Maps API.'));
+    
+    script.onerror = (error) => {
+      console.error('[YandexMap] Ошибка загрузки:', error);
+      reject(new Error('Failed to load Yandex Maps API'));
+    };
+    
     document.head.appendChild(script);
   });
-
-  return scriptPromise;
 }
 
-export function YandexRegionMap({ objects, onOpenDetails }: Props) {
+const INDUSTRY_COLORS: Record<string, string> = {
+  'Пищевая промышленность': 'green',
+  'Энергетика': 'red',
+  'Машиностроение': 'blue',
+  'Нефтегазовое машиностроение': 'violet',
+  'Мебельное производство': 'orange',
+  'Нефтегазовая и химическая промышленность': 'violet',
+};
+
+function getIndustryColor(industry: string): string {
+  return INDUSTRY_COLORS[industry] || 'gray';
+}
+
+export function YandexRegionMap({ 
+  objects, 
+  onOpenDetails, 
+  onSelect, 
+  industryFilter, 
+  cityFilter 
+}: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'missing_key'>('idle');
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(objects[0]?.slug ?? null);
-  const apiKey = import.meta.env.VITE_YANDEX_MAPS_API_KEY;
-
-  const selectedObject = objects.find((item) => item.slug === selectedSlug) ?? null;
+  const mapInstanceRef = useRef<any>(null);
+  const placemarksRef = useRef<Map<string, any>>(new Map());
+  const placemarkColorsRef = useRef<Map<string, string>>(new Map());
+  const placemarkDataRef = useRef<Map<string, Excursion>>(new Map());
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
 
   useEffect(() => {
-    if (!selectedSlug && objects[0]?.slug) {
-      setSelectedSlug(objects[0].slug);
-    }
-  }, [objects, selectedSlug]);
-
-  useEffect(() => {
-    if (!apiKey) {
-      setStatus('missing_key');
-      return;
-    }
-
-    if (!mapRef.current) {
+    if (!mapRef.current) return;
+    if (!objects || objects.length === 0) {
+      console.log('[YandexMap] Объекты ещё не загружены, ждём...');
       return;
     }
 
     let cancelled = false;
-    let mapInstance: { destroy?: () => void } | null = null;
 
     setStatus('loading');
 
-    loadYandexMaps(apiKey)
-      .then(async (ymaps3) => {
-        await ymaps3.ready;
+    loadYandexMaps()
+      .then(() => {
+        if (!window.ymaps || cancelled) return;
 
-        if (cancelled || !mapRef.current) {
-          return;
-        }
+        window.ymaps.ready(() => {
+          if (cancelled || !mapRef.current) return;
 
-        const map = new ymaps3.YMap(mapRef.current, {
-          location: {
-            center: [46.85, 51.72],
-            zoom: 7,
-          },
-          behaviors: ['drag', 'pinchZoom', 'dblClick', 'mouseWheel'],
+          try {
+            const map = new window.ymaps.Map(mapRef.current, {
+              center: [51.5, 46.0],
+              zoom: 7,
+              controls: ['zoomControl', 'geolocationControl'],
+            });
+
+            mapInstanceRef.current = map;
+            setStatus('ready');
+
+            addMarkersToMap(map, objects, industryFilter, cityFilter);
+          } catch (error) {
+            console.error('[YandexMap] Ошибка создания карты:', error);
+            if (!cancelled) setStatus('error');
+          }
         });
-
-        map.addChild(new ymaps3.YMapDefaultSchemeLayer());
-        map.addChild(new ymaps3.YMapDefaultFeaturesLayer());
-
-        objects.forEach((point) => {
-          const markerElement = document.createElement('button');
-          markerElement.type = 'button';
-          markerElement.className = 'yandex-marker';
-          markerElement.innerHTML = `
-            <span class="yandex-marker__city">${point.name}</span>
-            <span class="yandex-marker__count">${point.city}</span>
-          `;
-          markerElement.setAttribute('aria-label', `${point.name}, ${point.city}`);
-          markerElement.onclick = () => setSelectedSlug(point.slug);
-
-          map.addChild(new ymaps3.YMapMarker({ coordinates: point.coordinates }, markerElement));
-        });
-
-        mapInstance = map;
-        setStatus('ready');
       })
-      .catch(() => {
-        if (!cancelled) {
-          setStatus('error');
-        }
+      .catch((error) => {
+        console.error('[YandexMap] Ошибка загрузки API:', error);
+        if (!cancelled) setStatus('error');
       });
 
     return () => {
       cancelled = true;
-      mapInstance?.destroy?.();
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.destroy();
+        mapInstanceRef.current = null;
+      }
+      placemarksRef.current.clear();
+      placemarkColorsRef.current.clear();
+      placemarkDataRef.current.clear();
     };
-  }, [apiKey, objects]);
+  }, [objects]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !objects || objects.length === 0) return;
+    
+    addMarkersToMap(map, objects, industryFilter, cityFilter);
+  }, [industryFilter, cityFilter]);
+
+  function addMarkersToMap(map: any, objects: Excursion[], industryFilter: string | null, cityFilter: string | null) {
+    map.geoObjects.removeAll();
+    placemarksRef.current.clear();
+    placemarkColorsRef.current.clear();
+    placemarkDataRef.current.clear();
+
+    const filtered = objects.filter((point) => {
+      if (industryFilter && point.industry !== industryFilter) return false;
+      if (cityFilter && point.city !== cityFilter) return false;
+      return true;
+    });
+
+    console.log('[YandexMap] Добавлено маркеров:', filtered.length, 'из', objects.length);
+
+    filtered.forEach((point) => {
+      const color = getIndustryColor(point.industry);
+      placemarkColorsRef.current.set(point.slug, color);
+      placemarkDataRef.current.set(point.slug, point);
+      
+      const placemark = new window.ymaps.Placemark(
+        [point.coordinates[1], point.coordinates[0]],
+        {
+          hintContent: point.name,
+        },
+        {
+          preset: `islands#${color}CircleIcon`,
+          hasBalloon: false,
+        }
+      );
+
+      map.geoObjects.add(placemark);
+      placemarksRef.current.set(point.slug, placemark);
+
+      placemark.events.add('click', () => {
+        placemarksRef.current.forEach((pm, slug) => {
+          const originalColor = placemarkColorsRef.current.get(slug) || 'gray';
+          pm.options.set({
+            preset: `islands#${originalColor}CircleIcon`,
+            hasBalloon: false,
+          });
+          pm.properties.set('iconCaption', '');
+        });
+        
+        placemark.options.set({
+          preset: 'islands#yellowFactoryIcon',
+          hasBalloon: false,
+        });
+        
+        placemark.properties.set('iconCaption', `${point.name}\n${point.city}`);
+        
+        onSelectRef.current?.(point.slug);
+      });
+    });
+
+    if (filtered.length > 0) {
+      const bounds = map.geoObjects.getBounds();
+      if (bounds) {
+        map.setBounds(bounds, {
+          checkZoomRange: true,
+          zoomMargin: 50,
+        });
+      }
+    }
+  }
 
   return (
     <div className="relative min-h-[420px] overflow-hidden rounded-[32px] border border-white/12 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.16),rgba(255,255,255,0.04)),linear-gradient(160deg,rgba(1,165,166,0.24),rgba(10,16,42,0.9))] p-3 sm:p-5">
-      <div ref={mapRef} className="yandex-map-host h-[392px] w-full rounded-[24px]" aria-label="Карта объектов Саратовской области" />
+      <div 
+        ref={mapRef} 
+        className="yandex-map-host h-[500px] w-full rounded-[24px] overflow-hidden" 
+        aria-label="Карта объектов Саратовской области" 
+      />
 
-      {(status === 'missing_key' || status === 'error') && (
+      {status === 'error' && (
         <div className="absolute inset-3 flex items-end sm:inset-5">
           <div className="max-w-sm rounded-3xl border border-white/12 bg-ink/90 p-4 shadow-glass">
             <div className="flex items-center gap-2 text-lemon">
               <MapPinned className="h-5 w-5" />
-              <p className="font-display text-lg uppercase">Карта требует ключ Яндекс API</p>
+              <p className="font-display text-lg uppercase">Ошибка загрузки карты</p>
             </div>
             <p className="mt-2 text-sm leading-6 text-mist">
-              Добавьте `VITE_YANDEX_MAPS_API_KEY` в локальное окружение, чтобы включить реальную карту Саратовской
-              области с объектными маркерами.
+              Не удалось загрузить Яндекс.Карты. Проверьте подключение к интернету.
             </p>
-          </div>
-        </div>
-      )}
-
-      {selectedObject && (
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 sm:inset-x-auto sm:bottom-5 sm:left-5">
-          <div className="pointer-events-auto max-w-sm rounded-3xl border border-white/12 bg-ink/90 p-4 shadow-glass">
-            <p className="text-sm text-aqua">{selectedObject.industry}</p>
-            <h3 className="mt-2 break-words font-display text-2xl uppercase text-snow">{selectedObject.name}</h3>
-            <p className="mt-2 text-sm text-mist">{selectedObject.city}</p>
-            <p className="mt-3 text-sm leading-6 text-mist">{selectedObject.blurb}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <span className="chip">{selectedObject.price}</span>
-              <span className="chip">{selectedObject.duration}</span>
-              <span className="chip">{selectedObject.audience}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenDetails(selectedObject.slug)}
-              className="mt-5 inline-flex items-center rounded-full bg-lemon px-4 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300"
-            >
-              Подробнее из каталога
-            </button>
           </div>
         </div>
       )}

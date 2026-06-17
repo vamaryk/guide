@@ -1,10 +1,23 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, LockKeyhole, LogOut, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Image as ImageIcon,
+  LockKeyhole,
+  LogOut,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { Audience, Excursion } from '../data';
 
 type BookingStatus = 'new' | 'contacted' | 'in_progress' | 'confirmed' | 'done' | 'canceled';
 type AuthState = 'checking' | 'authorized' | 'guest';
-
 type BookingRecord = {
   id: string;
   name: string;
@@ -19,7 +32,6 @@ type BookingRecord = {
   updatedAt: string;
   createdAt: string;
 };
-
 type WorkflowDraft = { status: BookingStatus; managerComment: string };
 
 type ObjectFormState = {
@@ -42,9 +54,85 @@ type ObjectFormState = {
   includes: string;
   highlights: string;
   fullDescription: string;
+  imageUrl: string;
 };
 
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+type CustomSelectProps = {
+  options: SelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+};
+
+// ✅ Кастомный Select-компонент
+function CustomSelect({ options, value, onChange, placeholder }: CustomSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const selectedOption = options.find((opt) => opt.value === value);
+  const displayText = selectedOption?.label ?? placeholder ?? '';
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between rounded-2xl border border-white/12 bg-ink px-4 py-3 text-left text-sm text-snow outline-none transition focus:border-aqua"
+      >
+        <span className="truncate pr-6">{displayText}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-mist transition-transform ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-auto rounded-2xl border border-white/12 bg-ink shadow-xl">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-white/10 ${
+                  isSelected ? 'bg-lemon/10 text-lemon' : 'text-snow'
+                }`}
+              >
+                <span className="truncate">{option.label}</span>
+                {isSelected && <Check className="h-4 w-4 shrink-0 text-lemon" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const adminTokenKey = 'promtourism_admin_token';
+
 const statusOptions: Array<{ value: '' | BookingStatus; label: string }> = [
   { value: '', label: 'Все статусы' },
   { value: 'new', label: 'Новые' },
@@ -53,6 +141,21 @@ const statusOptions: Array<{ value: '' | BookingStatus; label: string }> = [
   { value: 'confirmed', label: 'Подтверждены' },
   { value: 'done', label: 'Завершены' },
   { value: 'canceled', label: 'Отменены' },
+];
+
+const workflowStatusOptions: Array<{ value: BookingStatus; label: string }> = [
+  { value: 'new', label: 'Новые' },
+  { value: 'contacted', label: 'Связались' },
+  { value: 'in_progress', label: 'В работе' },
+  { value: 'confirmed', label: 'Подтверждены' },
+  { value: 'done', label: 'Завершены' },
+  { value: 'canceled', label: 'Отменены' },
+];
+
+const audienceOptions: Array<{ value: Audience; label: string }> = [
+  { value: 'Семьи', label: 'Семьи' },
+  { value: 'Студенты', label: 'Студенты' },
+  { value: 'Бизнес', label: 'Бизнес' },
 ];
 
 const emptyObjectForm: ObjectFormState = {
@@ -75,6 +178,7 @@ const emptyObjectForm: ObjectFormState = {
   includes: '',
   highlights: '',
   fullDescription: '',
+  imageUrl: '',
 };
 
 const textFields: Array<[string, keyof ObjectFormState]> = [
@@ -124,6 +228,7 @@ function objectToForm(item: Excursion): ObjectFormState {
     includes: item.includes.join(', '),
     highlights: item.highlights.join(', '),
     fullDescription: item.fullDescription,
+    imageUrl: item.imageUrl ?? '',
   };
 }
 
@@ -147,6 +252,7 @@ function formToPayload(form: ObjectFormState): Excursion {
     includes: parseList(form.includes),
     highlights: parseList(form.highlights),
     fullDescription: form.fullDescription.trim(),
+    imageUrl: form.imageUrl.trim() || undefined,
   };
 }
 
@@ -167,6 +273,8 @@ export function AdminPage() {
   const [objectMessage, setObjectMessage] = useState('');
   const [activeObjectSlug, setActiveObjectSlug] = useState<string | null>(null);
   const [objectForm, setObjectForm] = useState<ObjectFormState>(emptyObjectForm);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   const adminFetch = (input: RequestInfo | URL, init?: RequestInit) =>
     fetch(input, { ...init, headers: { ...(init?.headers ?? {}), 'x-admin-token': adminToken } });
@@ -229,6 +337,7 @@ export function AdminPage() {
   useEffect(() => {
     const object = objects.find((item) => item.slug === activeObjectSlug);
     setObjectForm(object ? objectToForm(object) : emptyObjectForm);
+    setUploadError('');
   }, [activeObjectSlug, objects]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -253,14 +362,12 @@ export function AdminPage() {
     const query = new URLSearchParams();
     if (bookingsSearch.trim()) query.set('search', bookingsSearch.trim());
     if (bookingsFilter) query.set('status', bookingsFilter);
-
     const response = await adminFetch(`/api/bookings/export.csv${query.toString() ? `?${query.toString()}` : ''}`);
     if (!response.ok) {
       const payload = await readJson<{ message?: string }>(response);
       setBookingMessage(payload.message ?? 'Не удалось экспортировать CSV.');
       return;
     }
-
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -291,6 +398,53 @@ export function AdminPage() {
     const payload = await readJson<{ message?: string }>(response);
     setBookingMessage(payload.message ?? '');
     if (response.ok) await fetchBookings();
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadError('');
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await adminFetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const payload = await readJson<{ message?: string; url?: string }>(response);
+      if (!response.ok || !payload.url) {
+        setUploadError(payload.message ?? 'Не удалось загрузить изображение.');
+        return;
+      }
+
+      setObjectForm((current) => ({ ...current, imageUrl: payload.url! }));
+    } catch (e) {
+      setUploadError('Ошибка сети при загрузке изображения.');
+    } finally {
+      setIsUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleImageRemove = async () => {
+    const currentUrl = objectForm.imageUrl;
+    if (!currentUrl) return;
+
+    if (currentUrl.startsWith('/uploads/')) {
+      const filename = currentUrl.replace('/uploads/', '');
+      try {
+        await adminFetch(`/api/upload/${filename}`, { method: 'DELETE' });
+      } catch {
+        // Игнорируем ошибку удаления файла
+      }
+    }
+
+    setObjectForm((current) => ({ ...current, imageUrl: '' }));
   };
 
   const handleObjectSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -327,12 +481,11 @@ export function AdminPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <span className="eyebrow">Admin Access</span>
-              <h1 className="font-display text-4xl uppercase">Вход в административную панель</h1>
-              <p className="mt-4 text-sm leading-6 text-mist">SQLite, workflow заявок и CRUD объектов доступны только после авторизации.</p>
+              <h1 className="font-display text-4xl uppercase">Вход для администратора</h1>
             </div>
-            <a href="/" className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-5 py-3 text-sm font-medium text-snow transition hover:bg-white/15">
+            <a href="/" className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-medium text-snow transition hover:bg-white/15">
               <ArrowLeft className="h-4 w-4" />
-              На сайт
+              На сайт
             </a>
           </div>
           <form className="mt-8 glass-panel rounded-[30px] p-5" onSubmit={handleLogin}>
@@ -340,7 +493,7 @@ export function AdminPage() {
               Логин администратора
               <input type="text" value={loginValue} onChange={(event) => setLoginValue(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" />
             </label>
-            <label className="block text-sm text-mist">
+            <label className="block text-sm text-mist mt-3.5">
               Пароль администратора
               <div className="relative mt-2">
                 <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-mist" />
@@ -349,7 +502,7 @@ export function AdminPage() {
             </label>
             {authMessage && <p className="mt-4 text-sm text-red-200">{authMessage}</p>}
             {authState === 'checking' && <p className="mt-4 text-sm text-mist">Проверяем активную сессию…</p>}
-            <button type="submit" className="mt-6 inline-flex items-center gap-2 rounded-full bg-lemon px-5 py-3 font-semibold text-ink transition hover:bg-yellow-300">Войти</button>
+            <button type="submit" className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-lemon px-5 py-3 font-semibold text-ink transition hover:bg-yellow-300">Войти</button>
           </form>
         </div>
       </div>
@@ -362,12 +515,18 @@ export function AdminPage() {
         <section className="section-shell">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <span className="eyebrow">Admin MVP</span>
+              {/* <span className="eyebrow">Admin MVP</span> */}
               <h1 className="font-display text-4xl uppercase">Заявки, workflow и каталог объектов</h1>
             </div>
             <div className="flex flex-wrap gap-3">
-              <a href="/" className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-5 py-3 text-sm font-medium text-snow transition hover:bg-white/15"><ArrowLeft className="h-4 w-4" />На лендинг</a>
-              <button type="button" onClick={() => void handleLogout()} className="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3 text-sm font-medium text-red-100 transition hover:bg-red-500/20"><LogOut className="h-4 w-4" />Выйти</button>
+              <a href="/" className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-medium text-snow transition hover:bg-white/15">
+                <ArrowLeft className="h-4 w-4" />
+                На лендинг
+              </a>
+              <button type="button" onClick={() => void handleLogout()} className="inline-flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-5 py-3 text-sm font-medium text-red-100 transition hover:bg-red-500/20">
+                <LogOut className="h-4 w-4" />
+                Выйти
+              </button>
             </div>
           </div>
         </section>
@@ -375,17 +534,38 @@ export function AdminPage() {
         <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <section className="section-shell">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div><span className="eyebrow">Bookings Workflow</span><h2 className="font-display text-3xl uppercase">Заявки</h2></div>
+              <div>
+                <span className="eyebrow">Bookings Workflow</span>
+                <h2 className="font-display text-3xl uppercase">Заявки</h2>
+              </div>
               <form className="grid gap-3 sm:grid-cols-[1fr_220px_auto]" onSubmit={(event) => void (event.preventDefault(), fetchBookings())}>
-                <label className="relative block"><Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-mist" /><input type="text" value={bookingsSearch} onChange={(event) => setBookingsSearch(event.target.value)} placeholder="Имя, контакт, объект, комментарий" className="w-full rounded-2xl border border-white/12 bg-white/10 py-3 pl-11 pr-4 text-sm text-snow outline-none transition placeholder:text-mist/70 focus:border-aqua" /></label>
-                <select value={bookingsFilter} onChange={(event) => setBookingsFilter(event.target.value as '' | BookingStatus)} className="rounded-2xl border border-white/12 bg-ink px-4 py-3 text-sm text-snow outline-none focus:border-aqua">{statusOptions.map((item) => <option key={item.label} value={item.value}>{item.label}</option>)}</select>
-                <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-lemon px-5 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300">Найти</button>
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-mist" />
+                  <input type="text" value={bookingsSearch} onChange={(event) => setBookingsSearch(event.target.value)} placeholder="Имя, контакт, объект, комментарий" className="w-full rounded-2xl border border-white/12 bg-white/10 py-3 pl-11 pr-4 text-sm text-snow outline-none transition placeholder:text-mist/70 focus:border-aqua" />
+                </label>
+                {/* ✅ Кастомный select для фильтра статусов */}
+                <div>
+                  <CustomSelect
+                    options={statusOptions}
+                    value={bookingsFilter}
+                    onChange={(val) => setBookingsFilter(val as '' | BookingStatus)}
+                    placeholder="Все статусы"
+                  />
+                </div>
+                <button type="submit" className="inline-flex items-center justify-center rounded-xl bg-lemon px-5 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300">Найти</button>
               </form>
             </div>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={() => void fetchBookings()} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-snow transition hover:bg-white/15"><RefreshCw className="h-4 w-4" />Обновить список</button>
-              <button type="button" onClick={() => void handleExportCsv()} className="inline-flex items-center gap-2 rounded-full bg-lemon px-4 py-2 text-sm font-semibold text-ink transition hover:bg-yellow-300">Экспорт CSV</button>
-              {bookingMessage && <p className="text-sm text-aqua">{bookingMessage}</p>}
+            <div className="mt-5">
+                <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => void fetchBookings()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 h-10 text-sm text-snow transition hover:bg-white/15">
+                    <RefreshCw className="h-4 w-4" />
+                    Обновить список
+                    </button>
+                    <button type="button" onClick={() => void handleExportCsv()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-lemon px-4 py-2 text-sm font-semibold text-ink transition hover:bg-yellow-300">
+                    Экспорт CSV
+                    </button>
+                </div>
+                {bookingMessage && <p className="mt-3 text-sm text-aqua">{bookingMessage}</p>}
             </div>
             <div className="mt-6 space-y-3">
               {bookingsStatus === 'loading' && <div className="glass-panel rounded-[28px] p-5 text-sm text-mist">Загружаем заявки…</div>}
@@ -405,9 +585,25 @@ export function AdminPage() {
                         <p>Обновлено: {new Date(item.updatedAt).toLocaleString('ru-RU')}</p>
                       </div>
                       <div className="grid gap-4">
-                        <label className="block text-sm text-mist">Статус<select value={draft.status} onChange={(event) => setWorkflowDrafts((current) => ({ ...current, [item.id]: { ...draft, status: event.target.value as BookingStatus } }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-ink px-4 py-3 text-snow outline-none focus:border-aqua">{statusOptions.filter((item): item is { value: BookingStatus; label: string } => Boolean(item.value)).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                        <label className="block text-sm text-mist">Комментарий менеджера<textarea value={draft.managerComment} onChange={(event) => setWorkflowDrafts((current) => ({ ...current, [item.id]: { ...draft, managerComment: event.target.value } }))} rows={4} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" /></label>
-                        <button type="button" onClick={() => void handleWorkflowSave(item.id)} className="inline-flex items-center gap-2 rounded-full bg-lemon px-4 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300"><Save className="h-4 w-4" />Сохранить workflow</button>
+                        {/* ✅ Кастомный select для статуса workflow */}
+                        <label className="block text-sm text-mist">
+                          Статус
+                          <div className="mt-2">
+                            <CustomSelect
+                              options={workflowStatusOptions}
+                              value={draft.status}
+                              onChange={(val) => setWorkflowDrafts((current) => ({ ...current, [item.id]: { ...draft, status: val as BookingStatus } }))}
+                            />
+                          </div>
+                        </label>
+                        <label className="block text-sm text-mist">
+                          Комментарий менеджера
+                          <textarea value={draft.managerComment} onChange={(event) => setWorkflowDrafts((current) => ({ ...current, [item.id]: { ...draft, managerComment: event.target.value } }))} rows={4} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" />
+                        </label>
+                        <button type="button" onClick={() => void handleWorkflowSave(item.id)} className="inline-flex items-center gap-2 rounded-full bg-lemon px-4 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300">
+                          <Save className="h-4 w-4" />
+                          Сохранить workflow
+                        </button>
                       </div>
                     </div>
                   </article>
@@ -418,10 +614,19 @@ export function AdminPage() {
 
           <section className="section-shell">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div><span className="eyebrow">Objects CRUD</span><h2 className="font-display text-3xl uppercase">Каталог объектов</h2></div>
+              <div>
+                <span className="eyebrow">Objects CRUD</span>
+                <h2 className="font-display text-3xl uppercase">Каталог объектов</h2>
+              </div>
               <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={() => { setActiveObjectSlug(null); setObjectMessage(''); setObjectForm(emptyObjectForm); }} className="inline-flex items-center gap-2 rounded-full bg-lemon px-4 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300"><Plus className="h-4 w-4" />Новый объект</button>
-                <button type="button" onClick={() => void fetchObjects()} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-3 text-sm text-snow transition hover:bg-white/15"><RefreshCw className="h-4 w-4" />Обновить</button>
+                <button type="button" onClick={() => { setActiveObjectSlug(null); setObjectMessage(''); setObjectForm(emptyObjectForm); }} className="inline-flex items-center gap-2 rounded-xl bg-lemon px-4 py-3 text-sm font-semibold text-ink transition hover:bg-yellow-300">
+                  <Plus className="h-4 w-4" />
+                  Новый объект
+                </button>
+                <button type="button" onClick={() => void fetchObjects()} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-snow transition hover:bg-white/15">
+                  <RefreshCw className="h-4 w-4" />
+                  Обновить
+                </button>
               </div>
             </div>
             <div className="mt-6 grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
@@ -432,25 +637,131 @@ export function AdminPage() {
                     <button type="button" onClick={() => setActiveObjectSlug(item.slug)} className="w-full text-left">
                       <p className="font-display text-lg uppercase text-snow">{item.name}</p>
                       <p className="mt-1 text-sm text-mist">{item.city} · {item.industry}</p>
+                      {item.imageUrl && (
+                        <img src={item.imageUrl} alt={item.name} className="mt-2 h-20 w-full rounded-xl object-cover" />
+                      )}
                     </button>
-                    <button type="button" onClick={() => void handleDeleteObject(item.slug)} className="mt-4 inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-100 transition hover:bg-red-500/20"><Trash2 className="h-3.5 w-3.5" />Удалить</button>
+                    <button type="button" onClick={() => void handleDeleteObject(item.slug)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-100 transition hover:bg-red-500/20">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Удалить
+                    </button>
                   </article>
                 ))}
               </div>
               <form className="glass-panel rounded-[30px] p-5" onSubmit={handleObjectSubmit}>
-                <div className="flex items-center justify-between gap-4"><p className="font-display text-2xl uppercase">{activeObjectSlug ? 'Редактирование объекта' : 'Создание объекта'}</p>{objectMessage && <p className="text-sm text-aqua">{objectMessage}</p>}</div>
+                <div className="flex items-center justify-between gap-4">
+                  <p className="font-display text-2xl uppercase">{activeObjectSlug ? 'Редактирование объекта' : 'Создание объекта'}</p>
+                  {objectMessage && <p className="text-sm text-aqua">{objectMessage}</p>}
+                </div>
+
+                {/* Блок загрузки изображения */}
+                <div className="mt-6 rounded-3xl border border-white/12 bg-white/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="h-5 w-5 text-lemon" />
+                      <p className="font-display text-lg uppercase">Изображение объекта</p>
+                    </div>
+                    {objectForm.imageUrl && (
+                      <button
+                        type="button"
+                        onClick={handleImageRemove}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-100 transition hover:bg-red-500/20"
+                      >
+                        <X className="h-3 w-3" />
+                        Удалить
+                      </button>
+                    )}
+                  </div>
+
+                  {objectForm.imageUrl ? (
+                    <div className="mt-4 h-48 w-full overflow-hidden rounded-2xl border border-white/10">
+                      <img
+                        src={objectForm.imageUrl}
+                        alt="Превью объекта"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <label className="mt-4 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 py-8 px-4 cursor-pointer transition hover:border-lemon/50 hover:bg-white/10">
+                      <Upload className="h-8 w-8 text-mist" />
+                      <span className="text-sm text-mist text-center">
+                        {isUploading ? 'Загрузка…' : 'Нажмите, чтобы выбрать изображение'}
+                      </span>
+                      <span className="text-xs text-mist/60">JPEG, PNG, WebP, GIF. Максимум 5 МБ.</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={handleImageUpload}
+                        disabled={isUploading}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+
+                  {isUploading && (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-aqua">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Загружаем изображение…
+                    </div>
+                  )}
+                  {uploadError && <p className="mt-3 text-sm text-red-200">{uploadError}</p>}
+
+                  <div className="mt-4">
+                    <label className="block text-xs text-mist">
+                      Или вставьте URL изображения вручную
+                      <input
+                        type="text"
+                        value={objectForm.imageUrl.startsWith('/uploads/') ? '' : objectForm.imageUrl}
+                        onChange={(event) => setObjectForm((current) => ({ ...current, imageUrl: event.target.value }))}
+                        placeholder="https://example.com/image.jpg"
+                        className="mt-1.5 w-full rounded-xl border border-white/12 bg-ink px-3 py-2 text-sm text-snow outline-none focus:border-aqua"
+                        disabled={objectForm.imageUrl.startsWith('/uploads/')}
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  {textFields.map(([label, field]) => <label key={field} className="block text-sm text-mist">{label}<input aria-label={label} type="text" value={objectForm[field]} onChange={(event) => setObjectForm((current) => ({ ...current, [field]: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" /></label>)}
-                  <label className="block text-sm text-mist">Аудитория<select value={objectForm.audience} onChange={(event) => setObjectForm((current) => ({ ...current, audience: event.target.value as Audience }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-ink px-4 py-3 text-snow outline-none focus:border-aqua"><option value="Семьи">Семьи</option><option value="Студенты">Студенты</option><option value="Бизнес">Бизнес</option></select></label>
-                  <label className="block text-sm text-mist">Широта<input type="number" step="0.0001" value={objectForm.latitude} onChange={(event) => setObjectForm((current) => ({ ...current, latitude: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" /></label>
-                  <label className="block text-sm text-mist">Долгота<input type="number" step="0.0001" value={objectForm.longitude} onChange={(event) => setObjectForm((current) => ({ ...current, longitude: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" /></label>
+                  {textFields.map(([label, field]) => (
+                    <label key={field} className="block text-sm text-mist">
+                      {label}
+                      <input aria-label={label} type="text" value={objectForm[field]} onChange={(event) => setObjectForm((current) => ({ ...current, [field]: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" />
+                    </label>
+                  ))}
+                  {/* ✅ Кастомный select для аудитории */}
+                  <label className="block text-sm text-mist">
+                    Аудитория
+                    <div className="mt-2">
+                      <CustomSelect
+                        options={audienceOptions}
+                        value={objectForm.audience}
+                        onChange={(val) => setObjectForm((current) => ({ ...current, audience: val as Audience }))}
+                      />
+                    </div>
+                  </label>
+                  <label className="block text-sm text-mist">
+                    Широта
+                    <input type="number" step="0.0001" value={objectForm.latitude} onChange={(event) => setObjectForm((current) => ({ ...current, latitude: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" />
+                  </label>
+                  <label className="block text-sm text-mist">
+                    Долгота
+                    <input type="number" step="0.0001" value={objectForm.longitude} onChange={(event) => setObjectForm((current) => ({ ...current, longitude: event.target.value }))} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" />
+                  </label>
                 </div>
                 <div className="mt-4 grid gap-4">
-                  {textareaFields.map(([label, field]) => <label key={field} className="block text-sm text-mist">{label}<textarea aria-label={label} value={objectForm[field]} onChange={(event) => setObjectForm((current) => ({ ...current, [field]: event.target.value }))} rows={field === 'fullDescription' ? 5 : 3} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" /></label>)}
+                  {textareaFields.map(([label, field]) => (
+                    <label key={field} className="block text-sm text-mist">
+                      {label}
+                      <textarea aria-label={label} value={objectForm[field]} onChange={(event) => setObjectForm((current) => ({ ...current, [field]: event.target.value }))} rows={field === 'fullDescription' ? 5 : 3} className="mt-2 w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-snow outline-none focus:border-aqua" />
+                    </label>
+                  ))}
                 </div>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <button type="submit" className="inline-flex items-center gap-2 rounded-full bg-lemon px-5 py-3 font-semibold text-ink transition hover:bg-yellow-300"><Save className="h-4 w-4" />{activeObjectSlug ? 'Сохранить изменения' : 'Создать объект'}</button>
-                  <button type="button" onClick={() => { setActiveObjectSlug(null); setObjectMessage(''); setObjectForm(emptyObjectForm); }} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-5 py-3 font-medium text-snow transition hover:bg-white/15">Сбросить форму</button>
+                  <button type="submit" className="inline-flex items-center gap-2 rounded-xl bg-lemon px-5 py-3 font-semibold text-ink transition hover:bg-yellow-300">
+                    <Save className="h-4 w-4" />
+                    {activeObjectSlug ? 'Сохранить изменения' : 'Создать объект'}
+                  </button>
+                  <button type="button" onClick={() => { setActiveObjectSlug(null); setObjectMessage(''); setObjectForm(emptyObjectForm); }} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 py-3 font-medium text-snow transition hover:bg-white/15">Сбросить форму</button>
                 </div>
               </form>
             </div>

@@ -1,6 +1,5 @@
 export type Audience = 'Семьи' | 'Студенты' | 'Бизнес';
 export type BookingStatus = 'new' | 'contacted' | 'in_progress' | 'confirmed' | 'done' | 'canceled';
-
 export type ObjectRecord = {
   slug: string;
   name: string;
@@ -20,9 +19,8 @@ export type ObjectRecord = {
   includes: string[];
   highlights: string[];
   fullDescription: string;
-  imageUrl?: string; // 👈 добавлено
+  imageUrl?: string;
 };
-
 export type BookingRecord = {
   id: string;
   name: string;
